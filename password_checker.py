@@ -59,31 +59,45 @@ def check_breach(password):
 
     request = urllib.request.Request(
         url,
-        headers={"Add-Padding": "true"}
+        headers={
+            "Add-Padding": "true",
+            "User-Agent": "Password-Strength-Checker"
+        }
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=10) as response:
             results = response.read().decode("utf-8")
 
         for line in results.splitlines():
             hash_suffix, count = line.split(":")
+
             if hash_suffix == suffix:
                 return int(count)
 
         return 0
 
-    except (urllib.error.URLError, TimeoutError, ValueError):
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        ValueError,
+        OSError
+    ):
         return None
 
 
-def classify_strength(entropy, breached, common):
-    if breached is None:
-        return "UNVERIFIED - BREACH CHECK UNAVAILABLE"
+def classify_strength(entropy, breached, common, password):
 
-    if breached > 0 or common:
+    # Rule 1: Passwords shorter than 8 characters are Weak.
+    if len(password) < 8:
         return "Weak"
 
+    # Rule 2: Common or breached passwords are Weak.
+    if common or (breached is not None and breached > 0):
+        return "Weak"
+
+    # Rule 3: Classify based on estimated entropy.
     if entropy < 28:
         return "Weak"
     elif entropy < 50:
@@ -95,6 +109,7 @@ def classify_strength(entropy, breached, common):
 
 
 def main():
+
     print("=" * 50)
     print("       PASSWORD STRENGTH CHECKER")
     print("=" * 50)
@@ -108,16 +123,23 @@ def main():
         return
 
     entropy = calculate_entropy(password)
+
     checks = check_policy(password)
+
     common = check_dictionary(password)
+
+    print("\nChecking password security...")
+
     breached = check_breach(password)
 
     strength = classify_strength(
-        entropy, breached, common
+        entropy, breached, common, password
     )
 
     print("\n========== SECURITY REPORT ==========")
+
     print("Password Length:", len(password))
+
     print(f"Estimated Entropy: {entropy:.2f} bits")
 
     print("\nPolicy Compliance:")
@@ -140,21 +162,43 @@ def main():
 
     print("\nRecommendations:")
 
-    if len(password) < 12:
-        print("- Increase password length to at least 12 characters.")
+    recommendations = []
+
+    if len(password) < 8:
+        recommendations.append(
+            "Password must contain at least 8 characters."
+        )
+    elif len(password) < 12:
+        recommendations.append(
+            "Increase password length to at least 12 characters."
+        )
 
     for requirement, passed in checks.items():
         if not passed:
-            print(f"- Add requirement: {requirement}")
+            recommendations.append(
+                f"Add requirement: {requirement}"
+            )
 
     if common or (breached is not None and breached > 0):
-        print("- Choose a completely different password.")
+        recommendations.append(
+            "Choose a completely different password."
+        )
 
     if entropy < 50:
-        print("- Use a longer, randomly generated password.")
+        recommendations.append(
+            "Use a longer, randomly generated password."
+        )
 
     if breached is None:
-        print("- Retry the breach check when internet is available.")
+        recommendations.append(
+            "Retry the breach check when internet is available."
+        )
+
+    if recommendations:
+        for recommendation in recommendations:
+            print("-", recommendation)
+    else:
+        print("No additional recommendations.")
 
     print("\n======================================")
     print("       ANALYSIS COMPLETED")
